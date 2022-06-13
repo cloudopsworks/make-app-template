@@ -1,0 +1,16 @@
+##
+# (c) 2021 - Cloud Ops Works LLC - https://cloudops.works/
+#            On GitHub: https://github.com/cloudopsworks
+#            Distributed Under Apache v2.0 License
+#
+release:
+- ./*
+
+size-XS:
+- any: [ 'version.in' ]
+
+size-S:
+- any: [ 'Makefile*' ]
+
+size-XL:
+- any: [ '**/*.c', '**/*.h', '!Makefile*', '!version.in' ]

@@ -1,0 +1,120 @@
+##
+# (c) 2021 - Cloud Ops Works LLC - https://cloudops.works/
+#            On GitHub: https://github.com/cloudopsworks
+#            Distributed Under Apache v2.0 License
+#
+name: On Promote Environment
+on:
+  repository_dispatch:
+    types:
+      - promote-environment
+      - promote-env
+
+permissions:
+  issues: write
+  checks: read
+  deployments: write
+  contents: write
+  packages: read
+  statuses: write
+
+jobs:
+  payload:
+    outputs:
+      environment: ${{ steps.ver.outputs.environment }}
+      version: ${{ steps.ver.outputs.version }}
+      release: ${{ steps.ver.outputs.release }}
+      owner: ${{ steps.getowner.outputs.owner }}
+      repo: ${{ steps.getowner.outputs.repo_name }}
+      from_issue: ${{ steps.ver.outputs.from_issue }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Output payload
+        run: |
+          echo "This is the payload received"
+          echo "${{ github.event.client_payload }}"
+
+      # Get the owner repo
+      - name: Get owner
+        id: getowner
+        run: |
+          repo_owner=`echo "$GITHUB_REPOSITORY" | cut -f 1 -d "/"`
+          repo_name=`echo "$GITHUB_REPOSITORY" | cut -f 2 -d "/"`
+          echo "::set-output name=owner::$repo_owner"
+          echo "::set-output name=repo_name::$repo_name"
+
+      - name: Version outputs
+        id: ver
+        run: |
+          echo "::set-output name=version::${{ github.event.client_payload.promote.version }}"
+          echo "::set-output name=release::${{ github.event.client_payload.promote.releasename }}"
+          echo "::set-output name=platform::${{ github.event.client_payload.promote.platform }}"
+          echo "::set-output name=environment::${{ github.event.client_payload.promote.environment }}"
+          echo "::set-output name=from_issue::${{ github.event.client_payload.promote.fromissue }}"
+
+  deploy:
+    needs:
+      - payload
+    runs-on: ubuntu-latest
+    environment: ${{ needs.payload.outputs.environment }}
+    concurrency: 
+      group: ${{ needs.payload.outputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - name: Get Release Artifact
+        uses: robinraju/release-downloader@v1.3
+        with:
+          repository: ${{ needs.payload.outputs.owner }}/${{ needs.payload.outputs.repo }}
+          tag: v${{ needs.payload.outputs.version }}
+          token: ${{ secrets.BOT_TOKEN }}
+          fileName: ${{ needs.payload.outputs.release }}-${{ needs.payload.outputs.version }}.zip
+          
+      - name: Unzip release
+        run: unzip *.zip
+      
+      - name: Run Makefile
+        id: deployment
+        env:
+          ENV: ${{ secrets.ENV }}
+          MONGODB_USER: ${{ secrets.MONGODB_USER }}
+          MONGODB_PASS: ${{ secrets.MONGODB_PASS }}
+        continue-on-error: true
+        run: | 
+          make | tee log.out
+          out="$(cat log.out)"
+          out="${out//'%'/'%25'}"
+          out="${out//$'\n'/'%0A'}" 
+          out="${out//$'\r'/'%0D'}"
+          echo "::set-output name=runlog::$out"
+      
+      - name: Report result in issue
+        if: ${{ needs.payload.outputs.from_issue != '' }} 
+        uses: actions/github-script@v4
+        with:
+          github-token: ${{secrets.BOT_TOKEN}}
+          script: |
+            const issue_str = '${{ needs.payload.outputs.from_issue }}';
+            const issue_array = issue_str.split('#');
+            const issue_number = issue_array[1];
+            const output = `#### Run Output
+            #### Deployment Result ⚙️\`${{ steps.deployment.outcome }}\`
+            \`\`\`
+            ${{ steps.deployment.outputs.runlog }}
+            \`\`\`
+            Output Capture from repository: ${{ needs.payload.outputs.owner }}/${{ needs.payload.outputs.repo }}
+            Version: ${{ needs.payload.outputs.version }}
+            `
+
+            github.issues.createComment({
+              issue_number: issue_number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      - name: Fail the Job
+        if: ${{ steps.deployment.outcome != 'success' }}
+        run: |
+          echo "Deployment outcome was not successful!"
+          exit 1
+          

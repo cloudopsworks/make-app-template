@@ -1,0 +1,15 @@
+# Makefile Template
+VERSION := $(shell cat version.in)
+
+.PHONY: deploy
+.PHONY: deploy-dep1
+.PHONY: deploy-dep2
+
+deploy: deploy-dep1 deploy-dep2
+
+deploy-dep1:
+	@echo "DEPLOY: 1"
+
+deploy-dep2:
+	@echo "DEPLOY: 2"
+

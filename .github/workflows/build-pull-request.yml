@@ -1,0 +1,32 @@
+##
+# (c) 2021 - Cloud Ops Works LLC - https://cloudops.works/
+#            On GitHub: https://github.com/cloudopsworks
+#            Distributed Under Apache v2.0 License
+#
+name: Build Pull Request Checks
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - edited
+
+permissions:
+  contents: read
+  packages: write
+  statuses: write
+  pull-requests: write
+  issues: write
+  checks: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/code-build.yml
+    with:
+      isRelease: false
+      semver: 0.1.0-SNAPSHOT
+      ref: ${{ github.head_ref }}
+    secrets:
+      BOT_USER: ${{ secrets.BOT_USER }}
+      BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}

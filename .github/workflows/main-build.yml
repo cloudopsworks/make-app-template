@@ -1,0 +1,65 @@
+
+##
+# (c) 2021 - Cloud Ops Works LLC - https://cloudops.works/
+#            On GitHub: https://github.com/cloudopsworks
+#            Distributed Under Apache v2.0 License
+#
+name: Makefile Project Build
+on:
+  # Run only on branches PUSH except when charts are modified
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - ".github/workflows/**"
+  workflow_dispatch:
+    
+# Permission Settings for the entire RUN
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  packages: write
+  statuses: write
+
+jobs:
+  new_version:
+    uses: ./.github/workflows/code-tag.yml
+    secrets:
+      BOT_USER: ${{ secrets.BOT_USER }}
+      BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+
+  build:
+    needs: 
+      - new_version
+    uses: ./.github/workflows/code-build.yml
+    with:
+      semver: ${{ needs.new_version.outputs.release_version }} 
+      ref: ${{ needs.new_version.outputs.release_tag }}
+    secrets:
+      BOT_USER: ${{ secrets.BOT_USER }}
+      BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+
+  release:
+    needs:
+      - build
+      - new_version
+    uses: cloudopsworks/base-app-template/.github/workflows/create-release.yml@master
+    with:
+      release-tag: ${{ needs.new_version.outputs.release_version }}
+    secrets:
+      token: ${{ secrets.BOT_TOKEN }}
+
+  delivery:
+    needs:
+      - build
+      - release
+      - new_version
+    uses: ./.github/workflows/delivery-push.yml
+    with:
+      release_version: ${{ needs.new_version.outputs.release_version }}
+    secrets:
+      token: ${{ secrets.BOT_TOKEN }}
+
